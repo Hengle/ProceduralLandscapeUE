@@ -1,0 +1,39 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Shader World plugin",
+	"Description": "Landscapes/Oceans from Shader",
+	"Category": "Other",
+	"CreatedBy": "Maxime Dupart",
+	"CreatedByURL": "https://twitter.com/Max_Dupt",
+	"DocsURL": "",
+	"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/519f5dc62d714ba8b116e4763ba1e542",
+	"SupportURL": "",
+	"EngineVersion": "4.26.0",
+	"CanContainContent": true,
+	"SupportedTargetPlatforms": [
+		"IOS",
+		"Win32",
+		"Win64",
+		"Mac",
+		"Android",
+		"Linux"
+	],
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ShaderWorld",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ProceduralMeshComponent",
+			"Enabled": true
+		}
+	]
+}
