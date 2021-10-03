@@ -283,6 +283,7 @@ public:
 					Section->VertexBuffers.ColorVertexBuffer.VertexColor(i) = Vertex.Color;
 				}
 
+
 				{
 					auto& VertexBuffer = Section->VertexBuffers.PositionVertexBuffer;
 					void* VertexBufferData = RHILockBuffer(VertexBuffer.VertexBufferRHI, 0, VertexBuffer.GetNumVertices() * VertexBuffer.GetStride(), RLM_WriteOnly);

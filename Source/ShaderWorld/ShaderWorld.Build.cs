@@ -59,5 +59,19 @@ public class ShaderWorld : ModuleRules
 				// ... add any modules that your module loads dynamically here ...
 			}
 			);
+
+
+		
+        if (Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.AddRange(
+            new string[]
+            {
+                "DesktopPlatform"
+			}
+			);
+        }
+		
+
 	}
 }
