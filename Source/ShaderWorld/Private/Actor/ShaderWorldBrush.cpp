@@ -22,13 +22,13 @@ AShaderWorldBrush::AShaderWorldBrush(const FObjectInitializer& ObjectInitializer
 
 void AShaderWorldBrush::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-
-#if !WITH_EDITOR
 	EndPlayTriggered = true;
-#endif
 
 	if (BrushMaterialDyn && BrushMaterialDyn->IsRooted())
 		BrushMaterialDyn->RemoveFromRoot();
+	if (LayerBrushMaterialDyn && LayerBrushMaterialDyn->IsRooted())
+		LayerBrushMaterialDyn->RemoveFromRoot();
+
 	Super::EndPlay(EndPlayReason);
 	
 
@@ -48,11 +48,16 @@ UMaterialInstanceDynamic* AShaderWorldBrush::GetBrushDynamicMaterial()
 	return BrushMaterialDyn;
 }
 
+UMaterialInstanceDynamic* AShaderWorldBrush::GetLayerBrushDynamicMaterial()
+{
+	return LayerBrushMaterialDyn;
+}
+
 FBox2D AShaderWorldBrush::GetBrushFootPrint()
 {
 	FBox2D BrushFootPrint = FBox2D(ForceInit);
 
-	if (!EndPlayTriggered)
+	if (!EndPlayTriggered && GetWorld())
 	{
 		if (BoxBound)
 		{
@@ -70,8 +75,9 @@ bool AShaderWorldBrush::NeedRedraw(bool LayerEnabled,bool BrushEnabled, float La
 {
 	bool redraw = false;
 
+	bool WillBrushBeActuallyDrawn = LayerEnabled && BrushEnabled && (LayerInfluence>0.001f) && (BrushInfluence>0.001f) && IsValidBrush();
 	
-
+	if(IncludeBP)
 	DoesBrushNeedRedraw();
 
 	if(LayerEnabled!=Layer_Enabled || BrushEnabled!=Brush_Enabled)
@@ -83,19 +89,31 @@ bool AShaderWorldBrush::NeedRedraw(bool LayerEnabled,bool BrushEnabled, float La
 	
 	if (RedrawNeed)
 	{
+		if(!WillBrushBeActuallyDrawn)
+			RedrawNeed=false;
 		
 		return true;
 	}
-	FVector Loc = GetActorLocation();
 
+	if(WillBrushBeActuallyDrawn)
+	{
 		
+		FVector Loc = GetRootComponent()->GetComponentLocation();
 	
 	if((BrushLocation_Material-Loc).SizeSquared()>0.005f)	
+		{
 		redraw=true;	
+		}			
 	if (abs(Influence_Layer_Material - LayerInfluence) > 0.01f)
+		{
 		redraw=true;
+		}			
 	if (abs(Influence_Brush_Material - BrushInfluence) > 0.01f)
+		{
 		redraw=true;
+		}
+			
+	}	
 
 	
 	return redraw;
@@ -107,10 +125,11 @@ void AShaderWorldBrush::Reset()
 		BrushMaterialDyn->RemoveFromRoot();
 	BrushMaterialDyn=nullptr;
 
-	RedrawNeed=true;
+	if (LayerBrushMaterialDyn && LayerBrushMaterialDyn->IsRooted())
+		LayerBrushMaterialDyn->RemoveFromRoot();
+	LayerBrushMaterialDyn = nullptr;
 
-	Layer_Enabled = true;
-	Brush_Enabled = true;
+	RedrawNeed=true;
 
 	Influence_Layer_Material = 1.f;
 	Influence_Brush_Material = 1.f;
@@ -125,7 +144,7 @@ void AShaderWorldBrush::Reset()
 }
 
 
-void AShaderWorldBrush::ApplyBrushAt(UTextureRenderTarget2D* Destination_RT,UTextureRenderTarget2D* Source_RT,float LayerInfluence,float BrushInfluence, FVector RingLocation, float GridScaling, int N,bool CollisionMesh)
+void AShaderWorldBrush::ApplyBrushAt(UTextureRenderTarget2D* Destination_RT,UTextureRenderTarget2D* Source_RT,float LayerInfluence,float BrushInfluence, FVector RingLocation, float GridScaling, int N,bool CollisionMesh, bool IsLayer)
 {
 	UWorld* World = GetWorld();
 	FVector Loc = GetActorLocation();
@@ -140,21 +159,65 @@ void AShaderWorldBrush::ApplyBrushAt(UTextureRenderTarget2D* Destination_RT,UTex
 			BrushMaterialDyn->AddToRoot();
 	}
 
+	if (DrawToLayer && LayerBrushMaterial && !LayerBrushMaterialDyn)
+	{
+		LayerBrushMaterialDyn = UMaterialInstanceDynamic::Create(LayerBrushMaterial, this);
+#if !WITH_EDITOR
+		LayerBrushMaterialDyn->AddToRoot();
+#endif
+		if (World->WorldType == EWorldType::PIE)
+			LayerBrushMaterialDyn->AddToRoot();
+	}
+
+	if (IsLayer)
+	{
+		if(!DrawToLayer)
+		{
+			UE_LOG(LogTemp,Warning,TEXT("ERROR Land Data Layer drawing pass on a brush not enabled for that"));
+			return;
+		}
+			
+
+		if (LayerBrushMaterialDyn)
+		{
+			LayerBrushMaterialDyn->SetTextureParameterValue("DataLayer", Source_RT);
+			LayerBrushMaterialDyn->SetVectorParameterValue("RingLocation", RingLocation);
+
+			LayerBrushMaterialDyn->SetScalarParameterValue("CacheRes", Source_RT->SizeX);
+			LayerBrushMaterialDyn->SetScalarParameterValue("LocalGridScaling", GridScaling);
+			LayerBrushMaterialDyn->SetScalarParameterValue("N", N);
+			LayerBrushMaterialDyn->SetScalarParameterValue("Collision", 0.f);
+
+			UKismetRenderingLibrary::ClearRenderTarget2D(this, Destination_RT, FLinearColor::Black);
+			UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, Destination_RT, LayerBrushMaterialDyn);
+		}		
+
+		return;
+	}
+
+
+
 	if ((BrushLocation_Material - Loc).SizeSquared() > 0.005f)
 	{
 		BrushLocation_Material = Loc;
 		BrushMaterialDyn->SetVectorParameterValue("BrushLocation", BrushLocation_Material);
+		if(LayerBrushMaterialDyn)
+			LayerBrushMaterialDyn->SetVectorParameterValue("BrushLocation", BrushLocation_Material);
 	}
 	
 	if (abs(Influence_Layer_Material - LayerInfluence) > 0.01f)
 	{
 		Influence_Layer_Material = LayerInfluence;
 		BrushMaterialDyn->SetScalarParameterValue("LayerInfluence", Influence_Layer_Material);
+		if (LayerBrushMaterialDyn)
+			LayerBrushMaterialDyn->SetScalarParameterValue("LayerInfluence", Influence_Layer_Material);
 	}
 	if (abs(Influence_Brush_Material - BrushInfluence) > 0.01f)
 	{
 		Influence_Brush_Material = BrushInfluence;
 		BrushMaterialDyn->SetScalarParameterValue("BrushInfluence", Influence_Brush_Material);
+		if (LayerBrushMaterialDyn)
+			LayerBrushMaterialDyn->SetScalarParameterValue("BrushInfluence", Influence_Brush_Material);
 	}
 
 	Layer_Enabled = true;
@@ -173,9 +236,20 @@ void AShaderWorldBrush::ApplyBrushAt(UTextureRenderTarget2D* Destination_RT,UTex
 	UKismetRenderingLibrary::ClearRenderTarget2D(this, Destination_RT, FLinearColor::Black);
 	UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, Destination_RT, BrushMaterialDyn);
 
-	RedrawNeed=false;
 
 
+
+}
+
+bool AShaderWorldBrush::IsValidBrush()
+{
+	if(!IsValid(this))
+		return false;
+
+	if (!IsPendingKillOrUnreachable() && BrushMaterial && (!DrawToLayer || DrawToLayer && LayerBrushMaterial))
+		return true;
+
+	return false;
 }
 
 // Called when the game starts or when spawned

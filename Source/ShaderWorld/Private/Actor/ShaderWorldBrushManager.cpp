@@ -16,14 +16,20 @@ AShaderWorldBrushManager::AShaderWorldBrushManager()
 
 void AShaderWorldBrushManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	EndPlayCalled = true;
 
 	if(WorkRT && WorkRT->IsRooted())
 		WorkRT->RemoveFromRoot();
 	if (CollisionWorkRT && CollisionWorkRT->IsRooted())
 		CollisionWorkRT->RemoveFromRoot();
+	if (LayerRT && LayerRT->IsRooted())
+		LayerRT->RemoveFromRoot();
+		
 		
 	if (HeightmapToLocalRT && HeightmapToLocalRT->IsRooted())
 		HeightmapToLocalRT->RemoveFromRoot();
+
+	RuntimeDynamicBrushLayers.Empty();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -60,12 +66,15 @@ void AShaderWorldBrushManager::Reset()
 		WorkRT->RemoveFromRoot();
 	if (CollisionWorkRT && CollisionWorkRT->IsRooted())
 		CollisionWorkRT->RemoveFromRoot();
+	if (LayerRT && LayerRT->IsRooted())
+		LayerRT->RemoveFromRoot();
 
 	if (HeightmapToLocalRT && HeightmapToLocalRT->IsRooted())
 		HeightmapToLocalRT->RemoveFromRoot();
 
 	WorkRT = nullptr;
 	CollisionWorkRT = nullptr;
+	LayerRT = nullptr;
 	HeightmapToLocalRT = nullptr;
 
 	ForceRedraw = false;
@@ -82,7 +91,7 @@ void AShaderWorldBrushManager::Reset()
 	}
 }
 
-void AShaderWorldBrushManager::ApplyBrushStackToHeightMap(AGeometryClipMapWorld* SourceWorld,int LOD, UTextureRenderTarget2D* Heightmap_RT, FVector RingLocation, float GridScaling, int N,bool CollisionMesh)
+void AShaderWorldBrushManager::ApplyBrushStackToHeightMap(AGeometryClipMapWorld* SourceWorld,int LOD, UTextureRenderTarget2D* Heightmap_RT, FVector& RingLocation, float GridScaling, int& N,bool CollisionMesh)
 {
 	if(!SourceWorld || !Heightmap_RT || !HeightmapCopyPostWork)
 	{
@@ -111,6 +120,11 @@ void AShaderWorldBrushManager::ApplyBrushStackToHeightMap(AGeometryClipMapWorld*
 	
 		if(!CollisionMesh && !WorkRT)
 		{
+			if (ShaderWorldDebug != 0)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("AShaderWorldBrushManager Create WorkRT"));
+			}
+
 			WorkRT = UKismetRenderingLibrary::CreateRenderTarget2D(GetWorld(), Heightmap_RT->SizeX, Heightmap_RT->SizeY, RTF_RGBA8, FLinearColor(0, 0, 0, 1), false);
 #if !WITH_EDITOR
 			WorkRT->AddToRoot();
@@ -124,6 +138,11 @@ void AShaderWorldBrushManager::ApplyBrushStackToHeightMap(AGeometryClipMapWorld*
 		}
 		if (CollisionMesh && !CollisionWorkRT)
 		{
+			if (ShaderWorldDebug != 0)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("AShaderWorldBrushManager Create CollisionWorkRT"));
+			}
+
 			CollisionWorkRT = UKismetRenderingLibrary::CreateRenderTarget2D(GetWorld(), Heightmap_RT->SizeX, Heightmap_RT->SizeY, RTF_RGBA8, FLinearColor(0, 0, 0, 1), false);
 #if !WITH_EDITOR
 			CollisionWorkRT->AddToRoot();
@@ -137,19 +156,13 @@ void AShaderWorldBrushManager::ApplyBrushStackToHeightMap(AGeometryClipMapWorld*
 		}
 
 
-		
-		if(WorkRT)
-		UKismetRenderingLibrary::ClearRenderTarget2D(this, WorkRT, FLinearColor::Black);
-		if(CollisionWorkRT)
-		UKismetRenderingLibrary::ClearRenderTarget2D(this, CollisionWorkRT, FLinearColor::Black);
-
 		FVector2D Location(RingLocation.X, RingLocation.Y);
 		float Size = GridScaling * (N - 1) / 2.0;
 
 		FBox2D FootPrintRT(Location - Size * FVector2D(1.f, 1.f), Location + Size * FVector2D(1.f, 1.f));
 
-
-		ApplyStackForFootprint(FootPrintRT, Heightmap_RT, RingLocation, GridScaling, N, CollisionMesh);
+		FString NoName = "";
+		ApplyStackForFootprint(FootPrintRT, Heightmap_RT, RingLocation, GridScaling, N, CollisionMesh,false,NoName);
 		
 	}
 	else
@@ -158,11 +171,55 @@ void AShaderWorldBrushManager::ApplyBrushStackToHeightMap(AGeometryClipMapWorld*
 	}
 }
 
-void AShaderWorldBrushManager::ApplyStackForFootprint(FBox2D FootPrint , UTextureRenderTarget2D* Heightmap_RT, FVector RingLocation, float GridScaling, int N,bool CollisionMesh)
+void AShaderWorldBrushManager::ApplyBrushStackToLayer(AGeometryClipMapWorld* SourceWorld, int LOD, UTextureRenderTarget2D* Layer_RT, FVector& RingLocation, float& GridScaling, int& N, FString& LayerName)
 {
-	if(!Heightmap_RT || CollisionMesh && !CollisionWorkRT|| !CollisionMesh && !WorkRT || !HeightmapToLocalRT)
+	if (!SourceWorld || !Layer_RT)
 	{
-		UE_LOG(LogTemp,Warning,TEXT("ApplyStackForFootprint OUT !Heightmap_RT || CollisionMesh && !CollisionWorkRT|| !CollisionMesh && !WorkRT || !HeightmapToLocalRT"));
+		return;
+	}
+
+	if(HeightmapCopyPostWork)
+	{
+		UWorld* World = GetWorld();
+		if (!LayerRT)
+		{
+			
+			if (ShaderWorldDebug != 0)
+			{
+				UE_LOG(LogTemp,Warning,TEXT("AShaderWorldBrushManager Create LayerRT"));
+			}
+
+			LayerRT = UKismetRenderingLibrary::CreateRenderTarget2D(GetWorld(), Layer_RT->SizeX, Layer_RT->SizeY, RTF_RGBA8, FLinearColor(0, 0, 0, 1), false);
+#if !WITH_EDITOR
+			LayerRT->AddToRoot();
+#endif
+			if (World->WorldType == EWorldType::PIE)
+				LayerRT->AddToRoot();
+			LayerRT->Filter = TF_Nearest;
+			LayerRT->AddressX = TA_Clamp;
+			LayerRT->AddressY = TA_Clamp;
+			LayerRT->UpdateResourceImmediate();
+		}
+		/*
+		if (LayerRT)
+			UKismetRenderingLibrary::ClearRenderTarget2D(this, LayerRT, FLinearColor::Black);
+			*/
+
+		FVector2D Location(RingLocation.X, RingLocation.Y);
+		float Size = GridScaling * (N - 1) / 2.0;
+
+		FBox2D FootPrintRT(Location - Size * FVector2D(1.f, 1.f), Location + Size * FVector2D(1.f, 1.f));
+
+		ApplyStackForFootprint(FootPrintRT, Layer_RT, RingLocation, GridScaling, N, false,true,LayerName);
+
+	}
+}
+
+void AShaderWorldBrushManager::ApplyStackForFootprint(FBox2D FootPrint , UTextureRenderTarget2D* Heightmap_RT, FVector RingLocation, float GridScaling, int N,bool CollisionMesh, bool IsLayer, FString& LayerName)
+{
+	if(!Heightmap_RT || CollisionMesh && !CollisionWorkRT|| !CollisionMesh && !WorkRT || !HeightmapToLocalRT || IsLayer && !LayerRT)
+	{
+		UE_LOG(LogTemp,Warning,TEXT("ERROR ApplyStackForFootprint OUT !Heightmap_RT || CollisionMesh && !CollisionWorkRT|| !CollisionMesh && !WorkRT || !HeightmapToLocalRT|| Layer && !LayerRT"));
 		return;
 	}
 	
@@ -178,15 +235,18 @@ void AShaderWorldBrushManager::ApplyStackForFootprint(FBox2D FootPrint , UTextur
 
 			for (FBrushElement& BrushEl : Layer.Brushes)
 			{
-				if(BrushEl.Enabled && BrushEl.Influence>0.001f && BrushEl.IsValid() && FootPrint.Intersect(BrushEl.Brush->GetBrushFootPrint()))
+				if(BrushEl.Brush)
+					BrushEl.Brush->RedrawNeed=false;
+
+				if(BrushEl.Enabled && BrushEl.Influence>0.001f && BrushEl.IsValid() && FootPrint.Intersect(BrushEl.Brush->GetBrushFootPrint()) && (!IsLayer || IsLayer && BrushEl.Brush->DrawToLayer && BrushEl.Brush->NameOfLayerTarget == LayerName))
 				{
 					if (BrushEl.BrushManagerOwner != this)
 						BrushEl.BrushManagerOwner = this;
 
-					UTextureRenderTarget2D* Dest = Altern == 0 ? (CollisionMesh ? CollisionWorkRT : WorkRT) : Heightmap_RT;
-					UTextureRenderTarget2D* Src = Altern == 0 ? Heightmap_RT : (CollisionMesh ? CollisionWorkRT : WorkRT);					
+					UTextureRenderTarget2D* Dest = Altern == 0 ? (IsLayer?LayerRT:(CollisionMesh ? CollisionWorkRT : WorkRT)) : Heightmap_RT;
+					UTextureRenderTarget2D* Src = Altern == 0 ? Heightmap_RT : (IsLayer?LayerRT:(CollisionMesh ? CollisionWorkRT : WorkRT));					
 
-					BrushEl.Brush->ApplyBrushAt(Dest, Src,Layer.Influence,BrushEl.Influence, RingLocation, GridScaling, N, CollisionMesh);
+					BrushEl.Brush->ApplyBrushAt(Dest, Src,Layer.Influence,BrushEl.Influence, RingLocation, GridScaling, N, CollisionMesh,IsLayer);
 					Altern = Altern == 0 ? 1 : 0;				
 				}
 
@@ -194,9 +254,38 @@ void AShaderWorldBrushManager::ApplyStackForFootprint(FBox2D FootPrint , UTextur
 		}
 	}
 
+	for (FBrushLayer& Layer : RuntimeDynamicBrushLayers)
+	{
+		if (Layer.Enabled && Layer.Influence > 0.001f)
+		{
+			if (Layer.BrushManagerOwner != this)
+				Layer.BrushManagerOwner = this;
+
+			for (FBrushElement& BrushEl : Layer.Brushes)
+			{
+				if (BrushEl.Enabled && BrushEl.Influence > 0.001f && BrushEl.IsValid() && FootPrint.Intersect(BrushEl.Brush->GetBrushFootPrint()) && (!IsLayer || IsLayer && BrushEl.Brush->DrawToLayer && BrushEl.Brush->NameOfLayerTarget == LayerName))
+				{
+					if (BrushEl.BrushManagerOwner != this)
+						BrushEl.BrushManagerOwner = this;
+
+					UTextureRenderTarget2D* Dest = Altern == 0 ? (IsLayer ? LayerRT : (CollisionMesh ? CollisionWorkRT : WorkRT)) : Heightmap_RT;
+					UTextureRenderTarget2D* Src = Altern == 0 ? Heightmap_RT : (IsLayer ? LayerRT : (CollisionMesh ? CollisionWorkRT : WorkRT));
+
+					BrushEl.Brush->ApplyBrushAt(Dest, Src, Layer.Influence, BrushEl.Influence, RingLocation, GridScaling, N, CollisionMesh, IsLayer);
+					Altern = Altern == 0 ? 1 : 0;
+				}
+				else
+				{
+					
+				}
+
+			}
+		}
+	}
+
 	if (Altern == 1)
 	{
-		HeightmapToLocalRT->SetTextureParameterValue("HeightMap", CollisionMesh ? CollisionWorkRT : WorkRT);
+		HeightmapToLocalRT->SetTextureParameterValue("HeightMap", IsLayer?LayerRT:(CollisionMesh ? CollisionWorkRT : WorkRT));
 		UKismetRenderingLibrary::ClearRenderTarget2D(this, Heightmap_RT, FLinearColor::Black);
 		UKismetRenderingLibrary::DrawMaterialToRenderTarget(this, Heightmap_RT, HeightmapToLocalRT);
 	}
@@ -206,6 +295,8 @@ void AShaderWorldBrushManager::ApplyStackForFootprint(FBox2D FootPrint , UTextur
 void AShaderWorldBrushManager::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	RuntimeDynamicBrushLayers.Empty();
 	
 }
 
@@ -232,6 +323,12 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 		{
 			FBox2D RedrawScope(ForceInit);
 
+			FBox2D WorldFootprint = ShaderWorldOwner->GetHighestLOD_FootPrint();
+			bool WorldVisible = ShaderWorldOwner->HighestLOD_Visible();
+			
+			if(!WorldFootprint.bIsValid || !WorldVisible)
+				return;
+
 			bool RequireUpdate = false;
 			for (FBrushLayer& Layer : BrushLayers)
 			{			
@@ -243,18 +340,71 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 					if (BrushEl.BrushManagerOwner != this)
 						BrushEl.BrushManagerOwner = this;
 
-					if(BrushEl.IsValid() && BrushEl.Brush->NeedRedraw(Layer.Enabled,BrushEl.Enabled,Layer.Influence,BrushEl.Influence,IncludeBlueprintInUpdate))
+					if(BrushEl.IsValid())
 					{
-						RequireUpdate = true;						
+						//i need to check that the brush is within highest LOD boundaries otherwise it wont be processed and we re wasting time
+						if (WorldFootprint.Intersect(BrushEl.Brush->GetBrushFootPrint()))
+						{
 
-						RedrawScope+=BrushEl.Brush->GetBrushFootPrint();
+							if (BrushEl.Brush->NeedRedraw(Layer.Enabled, BrushEl.Enabled, Layer.Influence, BrushEl.Influence, IncludeBlueprintInUpdate))
+							{
+								RequireUpdate = true;
+
+								RedrawScope += BrushEl.Brush->GetBrushFootPrint();
+
+							}
+						}
 						
 					}
+
+				}				
+			}
+			for (FBrushLayer& Layer : RuntimeDynamicBrushLayers)
+			{
+				if (Layer.BrushManagerOwner != this)
+					Layer.BrushManagerOwner = this;
+
+				for (FBrushElement& BrushEl : Layer.Brushes)
+				{
+
+					if (BrushEl.BrushManagerOwner != this)
+						BrushEl.BrushManagerOwner = this;
+
+					if (BrushEl.IsValid())
+					{
+						//i need to check that the brush is within highest LOD boundaries otherwise it wont be processed and we re wasting time
+						if (WorldFootprint.Intersect(BrushEl.Brush->GetBrushFootPrint()))
+						{
+							if (BrushEl.Brush->NeedRedraw(Layer.Enabled, BrushEl.Enabled, Layer.Influence, BrushEl.Influence, IncludeBlueprintInUpdate))
+							{
+								RequireUpdate = true;
+
+								RedrawScope += BrushEl.Brush->GetBrushFootPrint();
+
+							}
+						}
+						
+					}
+					
+
 				}
 			}
+			
 
 			if(RequireUpdate || ExogeneReDrawBox.Num()>0)
 			{
+				if (ShaderWorldDebug != 0)
+				{
+					if (RequireUpdate)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("RequireUpdate BrushManagerAskRedraw = true"));
+					}
+					if (ExogeneReDrawBox.Num()>0)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("ExogeneReDrawBox.Num()>0 BrushManagerAskRedraw = true"));
+					}
+				}
+				
 				ShaderWorldOwner->BrushManagerAskRedraw=true;
 
 				for(FBox2D& Box:ExogeneReDrawBox)
@@ -272,7 +422,7 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 
 bool FBrushElement::IsValid()
 {
-	if(Brush && Brush->BrushMaterial)
+	if(Brush && Brush->IsValidBrush())
 		return true;
 
 	return false;
@@ -280,7 +430,7 @@ bool FBrushElement::IsValid()
 
 FBrushElement::~FBrushElement()
 {
-	if (BrushManagerOwner)
+	if (BrushManagerOwner && !BrushManagerOwner->EndPlayCalled && BrushManagerOwner->GetWorld())
 	{
 	FBox2D RedrawScope(ForceInit);
 	if (Brush)
@@ -297,7 +447,7 @@ FBrushElement::~FBrushElement()
 
 FBrushLayer::~FBrushLayer()
 {
-	if (BrushManagerOwner)
+	if (BrushManagerOwner && !BrushManagerOwner->EndPlayCalled && BrushManagerOwner->GetWorld())
 	{
 	FBox2D RedrawScope(ForceInit);
 
@@ -308,7 +458,6 @@ FBrushLayer::~FBrushLayer()
 			RedrawScope += BrushEl.Brush->GetBrushFootPrint();
 		}
 	}
-
 
 		if(RedrawScope.bIsValid)
 			BrushManagerOwner->AddExogeneReDrawBox(RedrawScope);

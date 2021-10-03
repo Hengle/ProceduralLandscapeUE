@@ -31,6 +31,16 @@ public:
 	UPROPERTY(Transient)
 		UMaterialInstanceDynamic* BrushMaterialDyn = nullptr;
 
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Write")
+		bool DrawToLayer = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Write",meta = (EditCondition = DrawToLayer))
+		FString NameOfLayerTarget = "";
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Write",meta = (EditCondition = DrawToLayer))
+		UMaterialInterface* LayerBrushMaterial = nullptr;
+	UPROPERTY(Transient)
+		UMaterialInstanceDynamic* LayerBrushMaterialDyn = nullptr;
+
 #if WITH_EDITOR
 
 	bool ShouldTickIfViewportsOnly() const override;
@@ -53,6 +63,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "WorldData")
 		UMaterialInstanceDynamic* GetBrushDynamicMaterial();
 
+	/**
+	* Can be nullptr
+	*/
+	UFUNCTION(BlueprintCallable, Category = "WorldData")
+		UMaterialInstanceDynamic* GetLayerBrushDynamicMaterial();
+
 	FBox2D GetBrushFootPrint();
 
 
@@ -68,7 +84,9 @@ public:
 	/**
 	* For c++ brushes override those functions
 	*/
-	virtual void ApplyBrushAt(UTextureRenderTarget2D* Destination_RT,UTextureRenderTarget2D* Source_RT,float LayerInfluence,float BrushInfluence, FVector RingLocation, float GridScaling, int N,bool CollisionMesh);
+	virtual void ApplyBrushAt(UTextureRenderTarget2D* Destination_RT,UTextureRenderTarget2D* Source_RT,float LayerInfluence,float BrushInfluence, FVector RingLocation, float GridScaling, int N,bool CollisionMesh, bool IsLayer);
+	
+	virtual bool IsValidBrush();
 	
 protected:
 	// Called when the game starts or when spawned

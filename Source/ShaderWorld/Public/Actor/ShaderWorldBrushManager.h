@@ -76,6 +76,11 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LayerStack")
 		TArray<FBrushLayer> BrushLayers;
+	/*
+	* Add Runtime Brushes here
+	*/
+	UPROPERTY(Transient,EditAnywhere, BlueprintReadWrite, Category = "RuntimeDynamic")
+		TArray<FBrushLayer> RuntimeDynamicBrushLayers;
 
 #if WITH_EDITOR
 
@@ -88,6 +93,8 @@ public:
 		UTextureRenderTarget2D* WorkRT = nullptr;
 	UPROPERTY(Transient)
 		UTextureRenderTarget2D* CollisionWorkRT = nullptr;
+	UPROPERTY(Transient)
+		UTextureRenderTarget2D* LayerRT = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Required", meta = (UIMin = 1.f, UIMax = 60.f, ClampMin = 1.f, ClampMax = 60.f))
 		float RedrawCheckPerSecond = 20.f;
@@ -105,9 +112,10 @@ public:
 
 	void Reset();
 
-	void ApplyBrushStackToHeightMap(AGeometryClipMapWorld* SourceWorld,int LOD, UTextureRenderTarget2D* Heightmap_RT, FVector RingLocation, float GridScaling, int N, bool CollisionMesh);
+	void ApplyBrushStackToHeightMap(AGeometryClipMapWorld* SourceWorld,int level, UTextureRenderTarget2D* Heightmap_RT, FVector& RingLocation, float GridScaling, int& N, bool CollisionMesh);
+	void ApplyBrushStackToLayer(AGeometryClipMapWorld* SourceWorld,int level, UTextureRenderTarget2D* Layer_RT, FVector& RingLocation, float& GridScaling, int& N, FString& LayerName);
 
-	void ApplyStackForFootprint(FBox2D FootPrint, UTextureRenderTarget2D* Heightmap_RT, FVector RingLocation, float GridScaling, int N, bool CollisionMesh);
+	void ApplyStackForFootprint(FBox2D FootPrint, UTextureRenderTarget2D* Heightmap_RT, FVector RingLocation, float GridScaling, int N, bool CollisionMesh, bool IsLayer, FString& LayerName);
 
 	void AddExogeneReDrawBox(FBox2D Box){ExogeneReDrawBox.Add(Box);};
 
@@ -124,4 +132,5 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	bool EndPlayCalled=false;
 };
