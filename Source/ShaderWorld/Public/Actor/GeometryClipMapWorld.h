@@ -5,20 +5,24 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "ConvexVolume.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "GeometryClipMapWorld.generated.h"
 
-class UProceduralMeshComponent;
+class UShaderWorldCollisionComponent;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
 class UTextureRenderTarget2D;
 class UStaticMesh;
-class UHierarchicalInstancedStaticMeshComponent;
 class UGeoClipmapMeshComponent;
 class UInstancedStaticMeshComponent;
 class UMaterialParameterCollection;
 class UTextureRenderTarget2DArray;
 class AShaderWorldBrushManager;
 struct FBox2D;
+
+static int ShaderWorldDebug = 0;
+
+
 
 UENUM(BlueprintType)
 enum class EWorldPresentation : uint8
@@ -40,6 +44,16 @@ enum class EClipMapInteriorConfig : uint8
 	NotVisible UMETA(DisplayName = "NotVisible"),
 };
 
+UENUM()
+enum class EGeoRenderingAPI : uint8
+{
+	DX11 UMETA(DisplayName = "DX11"),
+	DX12 UMETA(DisplayName = "DX12"),
+	OpenGL UMETA(DisplayName = "OpenGL"),
+	Vulkan UMETA(DisplayName = "Vulkan"),
+	Metal UMETA(DisplayName = "Metal"),
+};
+
 /**
 * Number of vertices per side for a given Clipmap ring
 *
@@ -47,6 +61,8 @@ enum class EClipMapInteriorConfig : uint8
 UENUM(BlueprintType)
 enum class ENValue : uint8
 {
+	N2047 UMETA(DisplayName = "2047"),
+	N1023 UMETA(DisplayName = "1023"),
 	N511 UMETA(DisplayName = "511"),
 	N255 UMETA(DisplayName = "255"),
 	N127 UMETA(DisplayName = "127"),
@@ -189,12 +205,16 @@ struct FCollisionMeshElement
 	* Collisions are handled by a set of traditional procedural meshes, masked to the viewer
 	*/
 	UPROPERTY(Transient)
-		UProceduralMeshComponent* Mesh = nullptr;
+		UShaderWorldCollisionComponent* Mesh = nullptr;
 	/**
 	* The Collision rendertarget holding the computed height data for a given vertice
 	*/
 	UPROPERTY(Transient)
 		UTextureRenderTarget2D* CollisionRT = nullptr;
+	
+	UPROPERTY(Transient)
+		UMaterialInstanceDynamic* DynCollisionCompute = nullptr;
+
 	/**
 	* Location of the collision patch
 	*/
@@ -225,6 +245,32 @@ struct FInstanceIndexes
 		TArray<int> InstancesIndexes;
 };
 
+USTRUCT()
+struct FSpawnableMeshProximityCollisionElement
+{
+	GENERATED_BODY()
+
+	/**
+	* We're computing assets transforms within a grid around the view point, that could be interpreted has the 
+	*/
+	UPROPERTY(Transient)
+		FVector Location = FVector(0.f,0.f,0.f);
+	/**
+	* IDs are indexes within the mesh Collision element pool
+	*/
+	UPROPERTY(Transient)
+		int ID = -1;
+
+	UPROPERTY(Transient)
+		TArray<FInstanceIndexes> InstancesIndexes;
+
+	/**
+	* Index Offset for each Mesh/actor variety computed on this element within the owning FSpawnableMesh HIM_Mesh/Spawned_Actors
+	*/
+	UPROPERTY(Transient)
+		TArray<int> InstanceOffset;
+};
+
 /**
 * This is a computation grid element for Spawnables, managed by FSpawnableMesh
 */
@@ -244,6 +290,8 @@ struct FSpawnableMeshElement
 		UTextureRenderTarget2D* LocationZ = nullptr;
 	UPROPERTY(Transient)
 		UTextureRenderTarget2D* Rotation = nullptr;
+	UPROPERTY(Transient)
+		UTextureRenderTarget2D* Scale = nullptr;
 
 	/**
 	* Dynamic material used to computed the assets transforms
@@ -263,6 +311,9 @@ struct FSpawnableMeshElement
 		int ID = -1;
 
 	UPROPERTY(Transient)
+		int LOD_usedLastUpdate = -1;
+
+	UPROPERTY(Transient)
 		TArray<FColor> LocationXData;
 	UPROPERTY(Transient)
 		TArray<FColor> LocationYData;
@@ -270,10 +321,14 @@ struct FSpawnableMeshElement
 		TArray<FColor> LocationZData;	
 	UPROPERTY(Transient)
 		TArray<FColor> RotationData;	
+	/**
+	* Only used on device lacking alpha composite | We stick to this relatively user friendly approach of materials/material function instead of diving into global shaders
+	*/
+	UPROPERTY(Transient)
+		TArray<FColor> ScaleData;
 	
 
-	UPROPERTY(Transient)
-		TArray<FTransform> InstancesTransform;
+	TArray<TArray<FTransform>> InstancesT;
 
 	UPROPERTY(Transient)
 		TArray<FInstanceIndexes> InstancesIndexes;
@@ -283,6 +338,10 @@ struct FSpawnableMeshElement
 	*/
 	UPROPERTY(Transient)
 		TArray<int> InstanceOffset;
+
+
+	UPROPERTY(Transient)
+		int Collision_Mesh_ID = -1;
 };
 
 class AGeometryClipMapWorld;
@@ -313,8 +372,19 @@ struct FSpawnableMesh
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn")
 	ESpawnableType SpawnType = ESpawnableType::Mesh;
 
+	/**
+	* Could spawn actor on hit, and put scale to zero. But don't remove/add item manually otherwise it'll corrupt our local book keeping  
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn",meta = (EditCondition = "SpawnType==ESpawnableType::Mesh"))
+	TSubclassOf<UHierarchicalInstancedStaticMeshComponent> FoliageComponent = UHierarchicalInstancedStaticMeshComponent::StaticClass();
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn",meta = (EditCondition = "SpawnType==ESpawnableType::Mesh"))
 		bool CollisionEnabled = false;
+	/**
+	* Relevant only if CollisionEnabled and Region Per Quadrant Side >1
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn", meta = (EditCondition = "CollisionEnabled && NumberRegionPerQuadrantSide>1"))
+		bool CollisionOnlyAtProximity = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn",meta = (EditCondition = "SpawnType==ESpawnableType::Mesh"))
 		bool CastShadows = true;
@@ -333,16 +403,44 @@ struct FSpawnableMesh
 
 	UPROPERTY(EditAnywhere, Category = "MeshToSpawn")
 		FFloatInterval AltitudeRange = FFloatInterval(-10000000.f,10000000.f);
+	UPROPERTY(EditAnywhere, Category = "MeshToSpawn")
+		FFloatInterval VerticalOffsetRange = FFloatInterval(0.f, 0.f);
 
 	UPROPERTY(EditAnywhere, Category = "MeshToSpawn")
 		FFloatInterval ScaleRange = FFloatInterval(.75f,1.25f);
 
 	UPROPERTY(EditAnywhere, Category = "MeshToSpawn")
 		FFloatInterval GroundSlopeAngle = FFloatInterval(0.f, 45.f);
+	/**
+	 * The distance where instances will begin to fade out if using a PerInstanceFadeAmount material node. 0 disables.
+	 * When the entire cluster is beyond this distance, the cluster is completely culled and not rendered at all.
+	 */
+	UPROPERTY(EditAnywhere, Category="MeshToSpawn", meta=(UIMin=0))
+	FInt32Interval CullDistance = FInt32Interval(0,0);
 
+	/** Controls whether the foliage should inject light into the Light Propagation Volume.  This flag is only used if CastShadow is true. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshToSpawn", meta = (EditCondition = "CastShadows"))
+		uint32 bAffectDynamicIndirectLighting : 1;
+
+	/** Controls whether the primitive should affect dynamic distance field lighting methods.  This flag is only used if CastShadow is true. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshToSpawn", meta = (EditCondition = "CastShadows"))
+		uint32 bAffectDistanceFieldLighting : 1;
+
+	/** Whether this foliage should cast dynamic shadows as if it were a two sided material. */
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly,Category = "MeshToSpawn", meta = (EditCondition = "CastShadows"))
+		uint32 bCastShadowAsTwoSided : 1;
+
+	/** Whether the foliage receives decals. */
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = "MeshToSpawn")
+		uint32 bReceivesDecals : 1;
 
 	UPROPERTY(Transient)
 		TArray<UHierarchicalInstancedStaticMeshComponent*> HIM_Mesh;
+
+	/** If we want collision we'll spawn asset here */
+	UPROPERTY(Transient)
+		TArray<UHierarchicalInstancedStaticMeshComponent*> HIM_Mesh_Collision_enabled;
+
 
 	UPROPERTY(Transient)
 		TArray<FSpawnedActorList> Spawned_Actors;
@@ -372,7 +470,7 @@ struct FSpawnableMesh
 	* What are the world dimension of a grid side size? In Unreal Engine unity/cm.
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn")
-		float RegionWorldDimension = 6400.f;
+		float RegionWorldDimensionMeters = 64.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn",meta=(UIMin = 1, UIMax = 10, ClampMin = 1, ClampMax = 10))
 		int NumberRegionPerQuadrantSide = 3;
 	
@@ -381,10 +479,17 @@ struct FSpawnableMesh
 	*/
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshToSpawn")
 		int RT_Dim = 30;
+	/**
+	* The lower, the more precise we can refine the position, the lower it is, the more expensive it is.
+	*/
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshToSpawn")
+		int PositionCanBeAdjustedWithLOD = 30;
 
 	UPROPERTY(Transient)
 		FVector ExtentOfMeshElement = FVector(0.f,0.f,0.f);
 
+	//////////////////////////////////////////////////////////////////////////////////
+	// GENERAL PURPOSE COMPUTE GRID
 	/**
 	* Pool of Computed grid
 	*/
@@ -397,12 +502,31 @@ struct FSpawnableMesh
 		TArray<int> UsedSpawnablesElem;
 	UPROPERTY(Transient)
 		TArray<int> SpawnablesElemReadToProcess;
-
+	UPROPERTY(Transient)
+		TArray<int> SpawnablesElemNeedCollisionUpdate;
 	/**
 	* A map holding the compute grid elements location and IDs
 	*/
 	UPROPERTY(Transient)
 		TMap<FIntVector, int > SpawnablesLayout;
+
+	//////////////////////////////////////////////////////////////////////////////////
+	// PROXIMITY COLLISION ONLY
+	/**
+	* Pool of Proximity collision
+	*/
+	UPROPERTY(Transient)
+		TArray<FSpawnableMeshProximityCollisionElement> SpawnablesCollisionElem;
+	UPROPERTY(Transient)
+		TArray<int> AvailableSpawnablesCollisionElem;
+	UPROPERTY(Transient)
+		TArray<int> UsedSpawnablesCollisionElem;
+	/**
+	* A map holding the Proximity Collision Layout
+	*/
+	UPROPERTY(Transient)
+		TMap<FIntVector, int > SpawnablesCollisionLayout;
+	//////////////////////////////////////////////////////////////////////////////////
 
 	/**
 	* This spawnable element is tied to a specific clipmap ring defined by the surface around the player we're computing asset for.
@@ -419,12 +543,15 @@ struct FSpawnableMesh
 		UMaterialInterface* CustomSpawnablesMat = nullptr;
 
 	FSpawnableMeshElement& GetASpawnableElem();
+	FSpawnableMeshProximityCollisionElement& GetASpawnableCollisionElem();
 
 	void ReleaseSpawnableElem(int ID);
 
 	void UpdateSpawnableData(FSpawnableMeshElement& MeshElem );
 
 	void Initiate(AGeometryClipMapWorld* Owner_);
+
+	void SpawnCollisionEnabled_HISM(TArray<TArray<FTransform>>& Transforms);
 
 	void CleanUp();
 
@@ -461,6 +588,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Brush Manager (Optional)",meta = (EditCondition = "EnableCaching"))
 	AShaderWorldBrushManager* BrushManager = nullptr;
 	
+	UPROPERTY(Transient)
+		EGeoRenderingAPI RendererAPI = EGeoRenderingAPI::DX11;
+
+	UPROPERTY(Transient)
+	FString RHIString="";
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings",meta=(UIMin = 1.0, UIMax = 120.0, ClampMin = 1.f, ClampMax = 120.0f))
 		float UpdateRatePerSecond = 20.0f;
@@ -472,6 +604,8 @@ public:
 		float BrushManagerAskRedraw = false;
 	UPROPERTY(Transient)
 		FBox2D BrushManagerRedrawScope;
+	UPROPERTY(Transient)
+		float UncompleteBrushSpawnableUpdate = false;
 
 	/**
 	* You can generated an ocean not requiring collisions
@@ -535,6 +669,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings",meta = (UIMin = 1, UIMax = 16, ClampMin = 1, ClampMax = 16))
 		int LOD_Num = 8;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "World Settings")
+		TArray<int32> LODs_DimensionsMeters;
+
 	/**
 	 * To counter CPU culling we're scaterring the actual ring clipmaps vertices vertically
 	 * Ocean should work with this parameter close to 0.f
@@ -564,6 +701,8 @@ public:
 		TArray<FClipMapLayer> LandDataLayers;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Collision")
+		bool CollisionVisible = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Collision")
 		int CollisionMeshPerQuadrantAroundPlayer = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Collision")
 		int CollisionMeshVerticeNumber = 65;
@@ -572,9 +711,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Collision")
 		UMaterialInterface* CollisionMat = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Collision")
-		UMaterialInterface* CollisionMat_HeightRead = nullptr;
+		UMaterialInterface* ComputeCollision = nullptr;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawnables")
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawnables",meta = (EditCondition = "!SpawnablesCollection"))
 		TArray<FSpawnableMesh> Spawnables;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawnables")
 		UMaterialInterface* SpawnablesMat = nullptr;
@@ -584,6 +724,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawnables")
 		int DrawCallBudget_Spawnables = 3;
+
+	/**
+	* Can we use the opacity when storing data ?
+	* i.e. Windows DX11/DX12 supports AlphaComposite, but Android OpenGL do not, Metal device might not
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Platform Capabilities")
+		bool AlphaCompositeSupported = true;
+	UPROPERTY(Transient)
+		bool AlphaComposite = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Experimental WorldPresentation")
 		EWorldPresentation WorldPresentation = EWorldPresentation::Smooth;
@@ -630,6 +779,11 @@ public:
 	int GetMeshNum(){return Meshes.Num();};
 	FClipMapMeshElement& GetMesh(int i){return Meshes[i];};
 
+	FBox2D GetHighestLOD_FootPrint();
+	bool HighestLOD_Visible();
+
+	FVector GetCameraLocation(){return CamLocation;};
+
 protected:
 
 	UPROPERTY(Transient)
@@ -651,7 +805,8 @@ protected:
 	FCollisionMeshElement& GetACollisionMesh();
 	void ReleaseCollisionMesh(int ID);
 
-	void Setup();
+	bool Setup();
+	void UpdateRenderAPI();
 	void InitiateWorld();
 	void Merge_SortList(TArray<int>& SourceList);
 	void SortSpawnabledBySurface();
@@ -667,12 +822,12 @@ protected:
 	void UpdateSpawnables();
 	bool CanUpdateSpawnables();
 
-	double GetHeightFromGPURead(FColor& ReadLoc);
+	double GetHeightFromGPURead(FColor& ReadLoc,int16& MaterialIndice);
 	void ProcessCollisionsPending();
 	double ComputeWorldHeightAt(FVector WorldLocation);
 	void UpdateCollisionMeshData(FCollisionMeshElement& Mesh );
 
-	FTransform GetLocalTransformOfSpawnable(const FVector& CompLoc, FColor& LocX, FColor& LocY, FColor& LocZ, FColor& Rot);
+	FTransform GetLocalTransformOfSpawnable(const FVector& CompLoc, FColor& LocX, FColor& LocY, FColor& LocZ, FColor& Rot,FColor& Scale);
 	void ProcessSpawnablePending();
 
 	EClipMapInteriorConfig RelativeLocationToParentInnerMeshConfig(FVector RelativeLocation);

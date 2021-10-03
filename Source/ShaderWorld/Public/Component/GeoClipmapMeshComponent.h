@@ -116,6 +116,9 @@ public:
 	/** Index buffer for this section */
 	UPROPERTY()
 	TArray<uint32> ProcIndexBuffer;
+	/** Physical material indices */
+	UPROPERTY()
+	TArray<uint16> MaterialIndices;
 	/** Local bounding box of section */
 	UPROPERTY()
 	FBox SectionLocalBox;
