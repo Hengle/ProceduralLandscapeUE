@@ -198,7 +198,7 @@ bool AGeometryClipMapWorld::Setup()
 	if (rebuild)
 	{
 		
-		//UE_LOG(LogTemp,Warning,TEXT("rebuild"));
+		UE_LOG(LogTemp,Warning,TEXT("rebuild"));
 
 		for (int i = Meshes.Num() - 1; i >= 0; i--)
 		{

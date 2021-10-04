@@ -714,7 +714,7 @@ public:
 		UMaterialInterface* ComputeCollision = nullptr;
 
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawnables")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawnables",meta = (EditCondition = "!SpawnablesCollection"))
 		TArray<FSpawnableMesh> Spawnables;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawnables")
 		UMaterialInterface* SpawnablesMat = nullptr;
