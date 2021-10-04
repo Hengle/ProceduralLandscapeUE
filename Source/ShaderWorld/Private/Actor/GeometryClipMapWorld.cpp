@@ -133,7 +133,7 @@ void AGeometryClipMapWorld::UpdateRenderAPI()
 
 		if (FParse::Value(*HardwareDetails, *RHILookup, RHIString))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("%s"), *RHIString);
+			UE_LOG(LogTemp, Warning, TEXT("RHI = %s"), *RHIString);
 
 			if (RHIString == TEXT("D3D11"))
 			{
@@ -155,10 +155,22 @@ void AGeometryClipMapWorld::UpdateRenderAPI()
 			{
 				RendererAPI = EGeoRenderingAPI::Metal;
 			}
+			else
+			{
+				UE_LOG(LogTemp,Warning,TEXT("No case setup for this RHI, default to DX11"));
+				RHIString="D3D11";
+				RendererAPI = EGeoRenderingAPI::DX11;
+			}
 
 			//if (GEngine)
 			//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, RHIString);
 
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Couldnt parse RHI, default to DX11"));
+			RHIString = "D3D11";
+			RendererAPI = EGeoRenderingAPI::DX11;
 		}
 	}
 }
@@ -185,7 +197,7 @@ bool AGeometryClipMapWorld::Setup()
 	if (rebuild)
 	{
 		
-		UE_LOG(LogTemp,Warning,TEXT("rebuild"));
+		//UE_LOG(LogTemp,Warning,TEXT("rebuild"));
 
 		for (int i = Meshes.Num() - 1; i >= 0; i--)
 		{
