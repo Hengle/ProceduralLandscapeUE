@@ -297,7 +297,7 @@ bool AGeometryClipMapWorld::Setup()
 		rebuildVegetationOnly=false;
 		
 		if (BrushManager)
-			BrushManager->Reset();
+			BrushManager->ResetB();
 
 		rebuild = false;
 		GenerateCollision_last = GenerateCollision;
@@ -1740,8 +1740,8 @@ void AGeometryClipMapWorld::ProcessSpawnablePending()
 				T.SetNum(Spawn.NumInstancePerHIM[i], false);
 			}
 
-			//TODO 10 seems low
-			if(NumOfVertex<10)
+			//TODO Performance tuned locally | Add variable per instance to make it adjustable via blueprint ?
+			if(NumOfVertex< 250)
 			{
 				for(int k=0;k<NumOfVertex;k++)
 				{
@@ -3030,6 +3030,13 @@ bool AGeometryClipMapWorld::UpdateSpawnable(int indice, bool MustBeInFrustum)
 			}
 			else
 			{
+				
+				if (Spawn.IndexOfClipMapForCompute > 0 && Spawn.IndexOfClipMapForCompute < GetMeshNum())
+				{
+					FClipMapMeshElement& Elem = GetMesh(Spawn.IndexOfClipMapForCompute);
+
+					if (Elem.IsSectionVisible(0) || Elem.IsSectionVisible(1))
+					{
 				if(BrushManager && BrushManagerAskRedraw)
 				{
 					FVector2D Location_Mesh(El.Location.X, El.Location.Y);
@@ -3127,6 +3134,13 @@ bool AGeometryClipMapWorld::UpdateSpawnable(int indice, bool MustBeInFrustum)
 					
 				}
 
+					
+					
+					}
+						 
+				}
+
+	
 			}
 
 		}
