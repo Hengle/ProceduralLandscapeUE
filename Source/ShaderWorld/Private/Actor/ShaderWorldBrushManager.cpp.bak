@@ -353,7 +353,6 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 								RedrawScope += BrushEl.Brush->GetBrushFootPrint();
 
 							}
-							BrushEl.Brush->RedrawNeed=false;
 						}
 						
 					}
@@ -383,7 +382,6 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 								RedrawScope += BrushEl.Brush->GetBrushFootPrint();
 
 							}
-							BrushEl.Brush->RedrawNeed=false;
 						}
 						
 					}

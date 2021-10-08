@@ -110,7 +110,7 @@ public:
 	UPROPERTY(Transient)
 		UMaterialInstanceDynamic* HeightmapToLocalRT = nullptr;
 
-	void ResetB();
+	void Reset();
 
 	void ApplyBrushStackToHeightMap(AGeometryClipMapWorld* SourceWorld,int level, UTextureRenderTarget2D* Heightmap_RT, FVector& RingLocation, float GridScaling, int& N, bool CollisionMesh);
 	void ApplyBrushStackToLayer(AGeometryClipMapWorld* SourceWorld,int level, UTextureRenderTarget2D* Layer_RT, FVector& RingLocation, float& GridScaling, int& N, FString& LayerName);

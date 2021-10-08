@@ -58,5 +58,5 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	void ApplyBrushAt(UTextureRenderTarget2D* Destination_RT,UTextureRenderTarget2D* Source_RT,float LayerInfluence,float BrushInfluence, FVector RingLocation, float GridScaling, int N,bool CollisionMesh, bool IsLayer) override;
-	void ResetB(bool LayerEnabled,bool BrushEnabled, float LayerInfluence,float BrushInfluence) override;
+	void Reset() override;
 };

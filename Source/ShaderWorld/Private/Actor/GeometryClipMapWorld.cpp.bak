@@ -3133,13 +3133,6 @@ bool AGeometryClipMapWorld::UpdateSpawnable(int indice, bool MustBeInFrustum)
 					
 				}
 
-					
-					
-					}
-						 
-				}
-
-		
 			}
 
 		}
