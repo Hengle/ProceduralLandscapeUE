@@ -74,10 +74,13 @@ public:
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	/*
+	* Do NOT add runtime spawned Brushes into those layers, use RuntimeDynamicBrushLayers instead
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LayerStack")
 		TArray<FBrushLayer> BrushLayers;
 	/*
-	* Add Runtime Brushes here
+	* Add Runtime spawned Brushes here
 	*/
 	UPROPERTY(Transient,EditAnywhere, BlueprintReadWrite, Category = "RuntimeDynamic")
 		TArray<FBrushLayer> RuntimeDynamicBrushLayers;
@@ -110,7 +113,7 @@ public:
 	UPROPERTY(Transient)
 		UMaterialInstanceDynamic* HeightmapToLocalRT = nullptr;
 
-	void Reset();
+	void ResetB();
 
 	void ApplyBrushStackToHeightMap(AGeometryClipMapWorld* SourceWorld,int level, UTextureRenderTarget2D* Heightmap_RT, FVector& RingLocation, float GridScaling, int& N, bool CollisionMesh);
 	void ApplyBrushStackToLayer(AGeometryClipMapWorld* SourceWorld,int level, UTextureRenderTarget2D* Layer_RT, FVector& RingLocation, float& GridScaling, int& N, FString& LayerName);

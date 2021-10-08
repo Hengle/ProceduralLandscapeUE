@@ -124,7 +124,7 @@ void AShaderWorldPaintableBrush::ApplyBrushAt(UTextureRenderTarget2D* Destinatio
 
 }
 
-void AShaderWorldPaintableBrush::Reset()
+void AShaderWorldPaintableBrush::ResetB(bool LayerEnabled,bool BrushEnabled, float LayerInfluence,float BrushInfluence)
 {
 	if (RT_A && RT_A->IsRooted())
 		RT_A->RemoveFromRoot();
@@ -133,7 +133,7 @@ void AShaderWorldPaintableBrush::Reset()
 	RT_A = nullptr;
 	RT_B = nullptr;
 
-	Super::Reset();
+	Super::ResetB(LayerEnabled,BrushEnabled,LayerInfluence,BrushInfluence);
 
 }
 

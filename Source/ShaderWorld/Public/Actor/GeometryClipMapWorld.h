@@ -471,7 +471,7 @@ struct FSpawnableMesh
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn")
 		float RegionWorldDimensionMeters = 64.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn",meta=(UIMin = 1, UIMax = 10, ClampMin = 1, ClampMax = 10))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshToSpawn",meta=(UIMin = 1, UIMax = 20, ClampMin = 1, ClampMax = 20))
 		int NumberRegionPerQuadrantSide = 3;
 	
 	/**

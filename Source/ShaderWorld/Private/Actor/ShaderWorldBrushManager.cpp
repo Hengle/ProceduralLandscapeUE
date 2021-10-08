@@ -60,7 +60,7 @@ void AShaderWorldBrushManager::PostEditChangeProperty(FPropertyChangedEvent& Pro
 #endif
 
 
-void AShaderWorldBrushManager::Reset()
+void AShaderWorldBrushManager::ResetB()
 {
 	if (WorkRT && WorkRT->IsRooted())
 		WorkRT->RemoveFromRoot();
@@ -86,7 +86,7 @@ void AShaderWorldBrushManager::Reset()
 		for (FBrushElement& BrushEl : Layer.Brushes)
 		{
 			if(BrushEl.Brush)
-				BrushEl.Brush->Reset();
+				BrushEl.Brush->ResetB(Layer.Enabled,BrushEl.Enabled, Layer.Influence,BrushEl.Influence);
 		}			
 	}
 }
@@ -353,6 +353,7 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 								RedrawScope += BrushEl.Brush->GetBrushFootPrint();
 
 							}
+							BrushEl.Brush->RedrawNeed=false;
 						}
 						
 					}
@@ -382,6 +383,7 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 								RedrawScope += BrushEl.Brush->GetBrushFootPrint();
 
 							}
+							BrushEl.Brush->RedrawNeed=false;
 						}
 						
 					}
@@ -392,7 +394,8 @@ void AShaderWorldBrushManager::Tick(float DeltaTime)
 			
 
 			if(RequireUpdate || ExogeneReDrawBox.Num()>0)
-			{
+			{				
+
 				if (ShaderWorldDebug != 0)
 				{
 					if (RequireUpdate)

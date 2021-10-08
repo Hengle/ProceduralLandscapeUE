@@ -297,7 +297,7 @@ bool AGeometryClipMapWorld::Setup()
 		rebuildVegetationOnly=false;
 		
 		if (BrushManager)
-			BrushManager->Reset();
+			BrushManager->ResetB();
 
 		rebuild = false;
 		GenerateCollision_last = GenerateCollision;
@@ -1649,8 +1649,16 @@ void AGeometryClipMapWorld::ProcessSpawnablePending()
 	for (FSpawnableMesh& Spawn : Spawnables)
 	{
 		
+		
+
 		if(Spawn.SpawnablesElemNeedCollisionUpdate.Num()>0)
 		{
+			double TimeStart = 0.0;
+			if (ShaderWorldDebug != 0)
+			{
+				TimeStart = FPlatformTime::Seconds();
+			}
+
 			for (int& ElID : Spawn.SpawnablesElemNeedCollisionUpdate)
 			{
 				FSpawnableMeshElement& Mesh = Spawn.SpawnablesElem[ElID];
@@ -1692,9 +1700,17 @@ void AGeometryClipMapWorld::ProcessSpawnablePending()
 				
 				
 			}
+
+			if (ShaderWorldDebug != 0)
+			{
+				TimeStart = FPlatformTime::Seconds()-TimeStart;
+				UE_LOG(LogTemp, Warning, TEXT("SpawnablesElemNeedCollisionUpdate Processing time %.3f seconds"),TimeStart*1000.f);
+			}
+
 		}
 		Spawn.SpawnablesElemNeedCollisionUpdate.Empty();
 
+		
 
 
 
@@ -1740,8 +1756,14 @@ void AGeometryClipMapWorld::ProcessSpawnablePending()
 				T.SetNum(Spawn.NumInstancePerHIM[i], false);
 			}
 
-			//TODO 10 seems low
-			if(NumOfVertex<10)
+			double TimeStart = 0.0;
+			if (ShaderWorldDebug != 0)
+			{
+				TimeStart = FPlatformTime::Seconds();
+			}
+
+			//TODO Performance tuned locally | Add variable per instance to make it adjustable via blueprint ?
+			if(NumOfVertex< 250)
 			{
 				for(int k=0;k<NumOfVertex;k++)
 				{
@@ -1760,6 +1782,19 @@ void AGeometryClipMapWorld::ProcessSpawnablePending()
 					}
 
 				});
+			}
+
+			if (ShaderWorldDebug != 0)
+			{
+				TimeStart = FPlatformTime::Seconds() - TimeStart;
+				if(NumOfVertex< 250)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("Num Entities %d GetLocalTransformOfSpawnable Processing time %.3f seconds"),NumOfVertex, TimeStart * 1000.f);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("Num Entities %d Parallelfor GetLocalTransformOfSpawnable Processing time %.3f seconds"),NumOfVertex, TimeStart * 1000.f);
+				}				
 			}
 
 			// We might need the transforms to update the collision if we become within range
@@ -3030,71 +3065,24 @@ bool AGeometryClipMapWorld::UpdateSpawnable(int indice, bool MustBeInFrustum)
 			}
 			else
 			{
-				if(BrushManager && BrushManagerAskRedraw)
-				{
-					FVector2D Location_Mesh(El.Location.X, El.Location.Y);
-					FVector2D Extent = Spawn.RegionWorldDimensionMeters*100.f / 2.f * FVector2D(1.f, 1.f);
-					FBox2D LocalCollisionMeshBox(Location_Mesh - Extent, Location_Mesh + Extent);
-
-					if (BrushManagerRedrawScope.Intersect(LocalCollisionMeshBox))
-					{		
-						IncrementSpawnableDrawCounter();
-						Spawn.UpdateSpawnableData(El);
-					}
-					else
-					{
-						if (NeedToUpdateCollisionMeshElement)
-						{
-							//add this element to the pool that need to copy their instance transform to the collision mesh elem
-							Spawn.SpawnablesElemNeedCollisionUpdate.Add(Spawn.UsedSpawnablesElem[i]);
-						}					
-					}
 				
-				}
-				else
+				if (Spawn.IndexOfClipMapForCompute > 0 && Spawn.IndexOfClipMapForCompute < GetMeshNum())
 				{
-					//if in view frustum
-					if(ViewFrustum.Planes.Num() == 0 || ViewFrustum.IntersectBox(El.Location, Spawn.ExtentOfMeshElement))					
-					{				
-						//if closer lod is available than the one used initially to place assets
-						FVector2D Location_Mesh(El.Location.X, El.Location.Y);
-						FVector2D Extent = Spawn.RegionWorldDimensionMeters*100.f / 2.f * FVector2D(1.f, 1.f)*1.01f;//Margin
-						FBox2D LocalMeshBox(Location_Mesh - Extent, Location_Mesh + Extent);
+					FClipMapMeshElement& Elem = GetMesh(Spawn.IndexOfClipMapForCompute);
 
-						int LOD_Candidate = -1;
-						///////////////////////////////
-					
-						for (int k = 1; Spawn.IndexOfClipMapForCompute + k < GetMeshNum(); k++)
+					if (Elem.IsSectionVisible(0) || Elem.IsSectionVisible(1))
+					{
+						if (BrushManager && BrushManagerAskRedraw)
 						{
-							int index_local = Spawn.IndexOfClipMapForCompute + k;
-							FClipMapMeshElement& Elem_Local = GetMesh(index_local);
+							FVector2D Location_Mesh(El.Location.X, El.Location.Y);
+							FVector2D Extent = Spawn.RegionWorldDimensionMeters * 100.f / 2.f * FVector2D(1.f, 1.f);
+							FBox2D LocalCollisionMeshBox(Location_Mesh - Extent, Location_Mesh + Extent);
 
-							FVector2D Location_Elem_Local(Elem_Local.Location.X, Elem_Local.Location.Y);
-							FVector2D Extent_Elem_Local = (N - 1) * Elem_Local.GridSpacing / 2.f * FVector2D(1.f, 1.f);
-							FBox2D Elem_Local_Footprint(Location_Elem_Local - Extent_Elem_Local, Location_Elem_Local + Extent_Elem_Local);
-
-							if (Elem_Local_Footprint.IsInside(LocalMeshBox.Max) && Elem_Local_Footprint.IsInside(LocalMeshBox.Min) && (Elem_Local.IsSectionVisible(0) || Elem_Local.IsSectionVisible(1)))
+							if (BrushManagerRedrawScope.Intersect(LocalCollisionMeshBox))
 							{
-								LOD_Candidate = index_local;
-							}
-							else
-							{
-								break;
-							}
-
-						}
-					
-					
-						if(LOD_Candidate>0 && LOD_Candidate>El.LOD_usedLastUpdate)
-						{
-							if (ShaderWorldDebug != 0)
-							{							
-								UE_LOG(LogTemp, Warning, TEXT("Better candidate found : update"));							
-							}
-
-							//if i have draw calls left, update asset position
-							if (CanUpdateSpawnables())
+								IncrementSpawnableDrawCounter();
 								Spawn.UpdateSpawnableData(El);
+							}
 							else
 							{
 								if (NeedToUpdateCollisionMeshElement)
@@ -3103,30 +3091,91 @@ bool AGeometryClipMapWorld::UpdateSpawnable(int indice, bool MustBeInFrustum)
 									Spawn.SpawnablesElemNeedCollisionUpdate.Add(Spawn.UsedSpawnablesElem[i]);
 								}
 							}
+
 						}
 						else
 						{
-							if (NeedToUpdateCollisionMeshElement)
+							//if in view frustum
+							if (ViewFrustum.Planes.Num() == 0 || ViewFrustum.IntersectBox(El.Location, Spawn.ExtentOfMeshElement))
 							{
-								//add this element to the pool that need to copy their instance transform to the collision mesh elem
-								Spawn.SpawnablesElemNeedCollisionUpdate.Add(Spawn.UsedSpawnablesElem[i]);
+								//if closer lod is available than the one used initially to place assets
+								FVector2D Location_Mesh(El.Location.X, El.Location.Y);
+								FVector2D Extent = Spawn.RegionWorldDimensionMeters * 100.f / 2.f * FVector2D(1.f, 1.f) * 1.01f;//Margin
+								FBox2D LocalMeshBox(Location_Mesh - Extent, Location_Mesh + Extent);
+
+								int LOD_Candidate = -1;
+								///////////////////////////////
+
+								for (int k = 1; Spawn.IndexOfClipMapForCompute + k < GetMeshNum(); k++)
+								{
+									int index_local = Spawn.IndexOfClipMapForCompute + k;
+									FClipMapMeshElement& Elem_Local = GetMesh(index_local);
+
+									FVector2D Location_Elem_Local(Elem_Local.Location.X, Elem_Local.Location.Y);
+									FVector2D Extent_Elem_Local = (N - 1) * Elem_Local.GridSpacing / 2.f * FVector2D(1.f, 1.f);
+									FBox2D Elem_Local_Footprint(Location_Elem_Local - Extent_Elem_Local, Location_Elem_Local + Extent_Elem_Local);
+
+									if (Elem_Local_Footprint.IsInside(LocalMeshBox.Max) && Elem_Local_Footprint.IsInside(LocalMeshBox.Min) && (Elem_Local.IsSectionVisible(0) || Elem_Local.IsSectionVisible(1)))
+									{
+										LOD_Candidate = index_local;
+									}
+									else
+									{
+										break;
+									}
+
+								}
+
+
+								if (LOD_Candidate > 0 && LOD_Candidate > El.LOD_usedLastUpdate)
+								{
+									if (ShaderWorldDebug != 0)
+									{
+										UE_LOG(LogTemp, Warning, TEXT("Better candidate found : update"));
+									}
+
+									//if i have draw calls left, update asset position
+									if (CanUpdateSpawnables())
+										Spawn.UpdateSpawnableData(El);
+									else
+									{
+										if (NeedToUpdateCollisionMeshElement)
+										{
+											//add this element to the pool that need to copy their instance transform to the collision mesh elem
+											Spawn.SpawnablesElemNeedCollisionUpdate.Add(Spawn.UsedSpawnablesElem[i]);
+										}
+									}
+								}
+								else
+								{
+									if (NeedToUpdateCollisionMeshElement)
+									{
+										//add this element to the pool that need to copy their instance transform to the collision mesh elem
+										Spawn.SpawnablesElemNeedCollisionUpdate.Add(Spawn.UsedSpawnablesElem[i]);
+									}
+
+								}
 							}
-					
+							else
+							{
+
+								if (NeedToUpdateCollisionMeshElement)
+								{
+									//add this element to the pool that need to copy their instance transform to the collision mesh elem
+									Spawn.SpawnablesElemNeedCollisionUpdate.Add(Spawn.UsedSpawnablesElem[i]);
+								}
+							}
+
+
 						}
-					}
-					else
-					{
-					
-						if(NeedToUpdateCollisionMeshElement)
-						{
-							//add this element to the pool that need to copy their instance transform to the collision mesh elem
-							Spawn.SpawnablesElemNeedCollisionUpdate.Add(Spawn.UsedSpawnablesElem[i]);
-						}
-					}
 
 					
+					
+					}
+						 
 				}
 
+				
 			}
 
 		}
