@@ -28,7 +28,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Default")
 		TArray<TEnumAsByte<EPhysicalSurface>> SurfaceTypes;
 
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
 
 	UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Default")
 	TArray<UShaderWorld_Material*> Materials;
