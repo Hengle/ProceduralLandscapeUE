@@ -1,9 +1,9 @@
 ![alt text](https://i.imgur.com/Ha8440F.png)
 
-
+# [Shader World Discord Channel](https://discord.gg/pHSvAQUTbU)
 # [Shader World is on Unreal Engine Marketplace](https://www.unrealengine.com/marketplace/en-US/product/shader-world-free-procedural-landscape-and-ocean)
 
-# Procedural Landscapes and Oceans as a plugin for unreal engine 4.26/4.27/5.0 using Editor Shader Graph
+# Virtual Heightfield / Procedural Landscapes / Oceans / GPU based Procedural Foliage, using Editor Shader Graph: plugin for unreal engine 4.26/4.27/5.0 
 
 Using the Editor Shader Graph, creating landscapes and oceans within a material function and render them using geometry clipmaps.
 Currently support landscape layers, runtime asset spawning, runtime collisions, features multiple triplanar material and a basic landscape material.
@@ -17,12 +17,15 @@ Requires the ability to compile C++ projects within Unreal Engine.
 
 [Another Thread](https://forums.unrealengine.com/t/procedural-landscape-from-shader-graph-editor-plugin-download-4-26-4-27-5-0/250977)
 
+![alt text](https://i.imgur.com/BAEA66M.jpg)
 
-![alt text](https://i.imgur.com/dc9CRfh.jpg)
+![alt text](https://i.imgur.com/iAA4Dq0.jpg)
 
 ![alt text](https://i.imgur.com/Wur1dT5.jpg)
 
+![alt text](https://i.imgur.com/kU1wDJi.png)
+
 ![alt text](https://i.imgur.com/5HWNwZv.jpg)
 
-![alt text](https://i.imgur.com/BkxKC9M.jpg)
+![alt text](https://i.imgur.com/z3YCXhb.jpg)
 
